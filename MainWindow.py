@@ -1,12 +1,13 @@
 from PyQt5 import QtGui
 from PyQt5.QtCore import QRect, Qt, QTimer, QPoint
-from PyQt5.QtWidgets import QHBoxLayout, QMainWindow, QWidget, QLabel, QVBoxLayout, QApplication, QLineEdit, QDialog, QPushButton, QFormLayout
+from PyQt5.QtWidgets import QHBoxLayout, QMainWindow, QWidget, QLabel, QVBoxLayout, QApplication, QLineEdit, QDialog, QPushButton, QFormLayout, QDesktopWidget
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QPen, QBrush, QColor
 
 import random
 
 from Snake import Snake
 from Settings import Settings
+from Fruit import Fruit
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -17,7 +18,12 @@ class MainWindow(QMainWindow):
         self.game_width = 900
         self.game_height = 900
         self.resize(self.window_width, self.window_height)
-        self.move(QApplication.desktop().screen().rect().center() - QPoint(self.window_width/2, self.window_height/2));
+
+        # Center the window
+        qtRectangle = self.frameGeometry()
+        centerPoint = QDesktopWidget().availableGeometry().center()
+        qtRectangle.moveCenter(centerPoint)
+        self.move(qtRectangle.topLeft())
         
         self.centralWidget = QWidget(self)
         self.setCentralWidget(self.centralWidget)
@@ -28,7 +34,6 @@ class MainWindow(QMainWindow):
         self.label.setStyleSheet("border: 5px solid black;")
 
         self.settings = Settings(self)
-        # self.settings.sizePolicy(QSizePolicyExpanding)
         self.settings.setMaximumWidth(200)
 
         self.hbox = QHBoxLayout(self.centralWidget)
@@ -40,7 +45,7 @@ class MainWindow(QMainWindow):
 
     def user_input(self):
         d = QDialog()
-        d.setWindowTitle("Semester Information")
+        d.setWindowTitle("Settings")
 
         # kann der Dialog umgangen werden um andere Fenster zu bedienen?
         d.setWindowModality(Qt.ApplicationModal) # nein (Standard)
@@ -72,24 +77,31 @@ class MainWindow(QMainWindow):
 
     def initialize(self):
         self.user_input()
+        # self.settings.hide()
+
+        tile_width = self.game_width / self.settings.game_size.value()
+        self.snake = Snake(0, 0, tile_width)
+
+        self.fruit = Fruit(56.25, 56.25, tile_width)
+        self.fruit.new_position(self.game_width, self.settings.game_size.value())
 
         self.canvas = QImage(self.game_width, self.game_height, QImage.Format_RGBA8888)
         # self.canvas.setStyleSheet("border: 5px solid black;")
         self.background = QImage(self.game_width, self.game_height, QImage.Format_RGBA8888)
         self.snake_ebene = QImage(self.game_width, self.game_height, QImage.Format_RGBA8888)
+        self.fruit_ebene = QImage(tile_width, tile_width, QImage.Format_RGBA8888)
 
         self.timer = QTimer()
         self.timer.setInterval(0)
         self.timer.timeout.connect(self.update)
         self.timer.start(300)
 
-        self.snake = Snake(0, 0)
-        self.snake.width = self.game_width / self.settings.game_size.value()
 
         ## Painter & Brush
         self.painter_canvas = QPainter(self.canvas)
         self.painter_background = QPainter(self.background)
         self.painter_snake = QPainter(self.snake_ebene)
+        self.painter_fruit = QPainter(self.fruit_ebene)
         
         self.brush = QBrush()
 
@@ -114,23 +126,17 @@ class MainWindow(QMainWindow):
             self.timer.isActive = not self.timer.isActive
 
         if e.key() == Qt.Key_Left or e.key() == Qt.Key_A:
-            self.snake.change_dir("Left")
+            self.snake.change_dir([-1, 0])
         if e.key() == Qt.Key_Right or e.key() == Qt.Key_D:
-            self.snake.change_dir("Right")
+            self.snake.change_dir([1, 0])
         if e.key() == Qt.Key_Down or e.key() == Qt.Key_S:
-            self.snake.change_dir("Down")
+            self.snake.change_dir([0, 1])
         if e.key() == Qt.Key_Up or e.key() == Qt.Key_W:
-            self.snake.change_dir("Up")
+            self.snake.change_dir([0, -1])
 
-    # def keyReleaseEvent(self, e):
-        # if e.key() == Qt.Key_Left:
-        #     self.left = False
-        # if e.key() == Qt.Key_Right:
-        #     self.right = False
-        # if e.key() == Qt.Key_Down:
-        #     self.down = False
-        # if e.key() == Qt.Key_Up:
-        #     self.up = False
+
+        if e.key() == Qt.Key_E:
+            self.snake.add_length()
 
     def random_color(self):
         r, g, b = random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
@@ -150,44 +156,24 @@ class MainWindow(QMainWindow):
 
     def update(self):
         self.snake.width = self.game_width / self.settings.game_size.value()
-        # self.snake.vel = self.settings.vel.value() * self.snake.width
-        # self.snake.vel = self.snake.width
         self.snake.vel = self.snake.width
-        self.snake.move()
-        if self.settings.border.isChecked():
-            if self.snake.x < 0 or self.snake.x + self.snake.width > self.game_width or self.snake.y < 0 or self.snake.y + self.snake.width > self.game_width:
-                self.snake.vel = 0
-                self.snake.x = 0
-                self.snake.y = 0
-                self.snake.change_dir("Right")
-                self.snake.right = False
-                print("LOST!")
-        else:
-            if self.snake.x < 0:
-                self.snake.x = self.game_width - self.snake.width
-            if self.snake.x >= self.game_width:
-                self.snake.x = 0
 
-            if self.snake.y < 0:
-                self.snake.y = self.game_width - self.snake.width
-                pass
-            if self.snake.y>= self.game_width:
-                self.snake.y = 0
+        self.snake.move(self.game_width, self.settings.border.isChecked())
+
+        self.settings.snake_x.setText(str(self.snake.body[0][0]))
+        self.settings.snake_y.setText(str(self.snake.body[0][1]))
+        self.settings.fruit_x.setText(str(self.fruit.pos[0]))
+        self.settings.fruit_y.setText(str(self.fruit.pos[1]))
+
+        if self.snake.body[0] == self.fruit.pos:
+            self.fruit.new_position(self.game_width, self.settings.game_size.value())
+            self.snake.add_length()
+
         self.timer.start(self.snake.width * self.settings.vel.value()) 
         self.render()
 
     def draw_canvas(self):
         self.painter_canvas.fillRect(0, 0, self.game_width, self.game_height, Qt.white)
-
-    def draw_snake_ebene(self):
-        self.snake_ebene.fill(Qt.transparent)
-        self.brush.setStyle(Qt.SolidPattern)
-        self.brush.setColor(QtGui.QColor('red'))
-        self.painter_snake.setBrush(self.brush)
-        # self.painter_snake.drawRect(self.snake.x, self.snake.y, self.snake.width, self.snake.width)
-        self.painter_snake.drawRoundedRect(self.snake.x, self.snake.y, self.snake.width, self.snake.width, 2.0, 2.0)
-
-        self.painter_canvas.drawImage(0, 0, self.snake_ebene)
 
     def draw_background(self):
         # self.brush.setStyle(Qt.Dense1Pattern)
@@ -201,24 +187,62 @@ class MainWindow(QMainWindow):
         color2.setAlpha(100)
         for i in range(self.settings.game_size.value()):
             for j in range(self.settings.game_size.value()):
-                # color = QColor(self.random_color())
-                # color.setAlpha(random.choice([20, 100]))
-                # color.setAlpha(random.randint(0, 255))
+                # # color = QColor(self.random_color())
+                # # color1.setAlpha(random.choice([20, 100]))
+                # color1.setAlpha(random.randint(0, 255))
+                # self.brush.setColor(color1)
                 if (i+j) % 2 == 0:
                     self.brush.setColor(color1)
                 else:
                     self.brush.setColor(color2)
-                # color.setAlpha(255)
                 self.painter_background.setBrush(self.brush)
                 self.painter_background.drawRect(i*w, j*w, w, w)
         
-        self.painter_canvas.drawImage(0, 0, self.background)
+    def died(self):
+        self.snake.revive()
+        d = QDialog()
+        d.setWindowTitle("Looser..")
+
+        # kann der Dialog umgangen werden um andere Fenster zu bedienen?
+        d.setWindowModality(Qt.ApplicationModal) # nein (Standard)
+        # d.setWindowModality(qc.Qt.WindowModal)    # ja
+
+        # ... wie QWidget verwendbar
+        fbox = QFormLayout()
+
+        input_name = QLabel("YOU DIED")
+        fbox.addRow("LOOSER", input_name)
+        
+        highscore = QLabel(str(self.snake.highscore))
+        fbox.addRow("But your highscore was: ", highscore)
+
+        btnok = QPushButton("Restart the Game",d)
+        btnno = QPushButton("Quit",d)
+        fbox.addRow(btnok, btnno)
+
+        d.setLayout(fbox)
+
+        # akzeptieren / ablehnen
+        btnok.clicked.connect(lambda: d.accept())
+        btnno.clicked.connect(lambda: d.reject())
+
+        # bei Fehler / Erfolg an Hauptfenster melden
+        d.accepted.connect(lambda: self.snake.reset_highscore())
+        d.rejected.connect(lambda: self.close())
+
+        # Extras
+        btnok.setDefault(True)           # btn wird bei Enter gedrückt
+        d.exec_()
 
     def render(self):
         self.draw_canvas()
         self.draw_background()
-        self.draw_snake_ebene()
+        self.snake.draw(self.snake_ebene, self.painter_snake, self.brush)
+        self.fruit.draw(self.fruit_ebene, self.painter_fruit, self.brush)
+        if self.snake.dead:
+            self.died()
 
-        self.label.setPixmap(QPixmap.fromImage(self.canvas))
-        # self.painter_canvas.end()
- 
+        self.painter_canvas.drawImage(0, 0, self.background)
+        self.painter_canvas.drawImage(0, 0, self.snake_ebene)
+        self.painter_canvas.drawImage(self.fruit.pos[0], self.fruit.pos[1], self.fruit_ebene)
+        self.label.setPixmap(QPixmap.fromImage(self.canvas)) 
